@@ -56,7 +56,7 @@ def preprocess_text(text):
     return preprocessed_text
 
 # Directory path to the dataset containing text documents
-directory_path = '../sentiment labelled sentences'  # Corrected path
+directory_path = '../sentiment labelled sentences'  
 
 # Load all three datasets
 all_data = load_data(directory_path)
@@ -90,64 +90,126 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.metrics import classification_report, accuracy_score
 
-# Split the data into training and testing sets
-X_train, X_test, y_train, y_test = train_test_split(df['Text'], df['Score'], test_size=0.2, random_state=42)
+# Split the data into training, validation, and testing sets
+X_train, X_temp, y_train, y_temp = train_test_split(df['Text'], df['Score'], test_size=0.4, random_state=42)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42)
 
 # Vectorize the text data using TF-IDF
 vectorizer = TfidfVectorizer()
 X_train_tfidf = vectorizer.fit_transform(X_train)
+X_val_tfidf = vectorizer.transform(X_val)
 X_test_tfidf = vectorizer.transform(X_test)
 
 # Random Forest classifier
 rf_classifier = RandomForestClassifier(n_estimators=100, random_state=42)
 rf_classifier.fit(X_train_tfidf, y_train)
-y_pred = rf_classifier.predict(X_test_tfidf)
+y_pred_rf = rf_classifier.predict(X_val_tfidf)
 
 # Naive Bayes Classifier
 nb_classifier = MultinomialNB()
 nb_classifier.fit(X_train_tfidf, y_train)
-y_pred_nb = nb_classifier.predict(X_test_tfidf)
+y_pred_nb = nb_classifier.predict(X_val_tfidf)
 
 # Logistic Regression Classifier
 lr_classifier = LogisticRegression(max_iter=1000)
 lr_classifier.fit(X_train_tfidf, y_train)
-y_pred_lr = lr_classifier.predict(X_test_tfidf)
+y_pred_lr = lr_classifier.predict(X_val_tfidf)
 
 # Support Vector Machines Classifier
 svm_classifier = SVC(kernel='linear')
 svm_classifier.fit(X_train_tfidf, y_train)
-y_pred_svm = svm_classifier.predict(X_test_tfidf)
+y_pred_svm = svm_classifier.predict(X_val_tfidf)
 
-# Evaluate the performance of the classifiers
+# Evaluate the performance of the classifiers on the validation set
 print("Random Forest Classifier:")
-print(classification_report(y_test, y_pred))
-print("Accuracy:", accuracy_score(y_test, y_pred))
+print(classification_report(y_val, y_pred_rf))
+print("Accuracy:", accuracy_score(y_val, y_pred_rf))
 
 print("\nNaive Bayes Classifier:")
-print(classification_report(y_test, y_pred_nb))
-print("Accuracy:", accuracy_score(y_test, y_pred_nb))
+print(classification_report(y_val, y_pred_nb))
+print("Accuracy:", accuracy_score(y_val, y_pred_nb))
 
 print("\nLogistic Regression Classifier:")
-print(classification_report(y_test, y_pred_lr))
-print("Accuracy:", accuracy_score(y_test, y_pred_lr))
+print(classification_report(y_val, y_pred_lr))
+print("Accuracy:", accuracy_score(y_val, y_pred_lr))
 
 print("\nSupport Vector Machines Classifier:")
-print(classification_report(y_test, y_pred_svm))
-print("Accuracy:", accuracy_score(y_test, y_pred_svm))
+print(classification_report(y_val, y_pred_svm))
+print("Accuracy:", accuracy_score(y_val, y_pred_svm))
+
+
+# ------------------------------------------
+# --- Hyperoptimization using gridsearch ---
+# ------------------------------------------
+
+from sklearn.model_selection import GridSearchCV
+
+# Random Forest grid
+rf_params = {
+    'n_estimators': [100, 200, 300],
+    'max_depth': [None, 10, 20],
+    'min_samples_split': [2, 5, 10]
+}
+
+rf_grid_search = GridSearchCV(RandomForestClassifier(random_state=42), rf_params, cv=5, scoring='accuracy')
+rf_grid_search.fit(X_train_tfidf, y_train)
+
+# Naive Bayes grid
+nb_params = {
+    'alpha': [0.01, 0.1, 1.0, 10.0]
+}
+
+nb_grid_search = GridSearchCV(MultinomialNB(), nb_params, cv=5, scoring='accuracy')
+nb_grid_search.fit(X_train_tfidf, y_train)
+
+# Logistic regression grid
+lr_params = {
+    'C': [0.01, 0.1, 1, 10, 100],
+    'solver': ['liblinear', 'lbfgs']
+}
+
+lr_grid_search = GridSearchCV(LogisticRegression(max_iter=1000), lr_params, cv=5, scoring='accuracy')
+lr_grid_search.fit(X_train_tfidf, y_train)
+
+# Support Vector Machine Grid
+svm_params = {
+    'C': [0.1, 1, 10],
+    'kernel': ['linear', 'rbf'],
+    'gamma': ['scale', 'auto']
+}
+
+svm_grid_search = GridSearchCV(SVC(), svm_params, cv=5, scoring='accuracy')
+svm_grid_search.fit(X_train_tfidf, y_train)
+
+# Evaluation
+print("Best parameters for RF:", rf_grid_search.best_params_)
+print("Best score for RF:", rf_grid_search.best_score_)
+
+print("Best parameters for NB:", nb_grid_search.best_params_)
+print("Best score for NB:", nb_grid_search.best_score_)
+
+print("Best parameters for LR:", lr_grid_search.best_params_)
+print("Best score for LR:", lr_grid_search.best_score_)
+
+print("Best parameters for SVM:", svm_grid_search.best_params_)
+print("Best score for SVM:", svm_grid_search.best_score_)
+# ------------------------------------------
+# *** Hyperoptimization using gridsearch ***
+# ------------------------------------------
 
 
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-# Compute confusion matrices for all classifiers
-conf_matrix_rf = confusion_matrix(y_test, y_pred)
+# Compute confusion matrices for all classifiers on the test set
+conf_matrix_rf = confusion_matrix(y_test, y_pred_rf)
 conf_matrix_nb = confusion_matrix(y_test, y_pred_nb)
 conf_matrix_lr = confusion_matrix(y_test, y_pred_lr)
 conf_matrix_svm = confusion_matrix(y_test, y_pred_svm)
 
 # Plot confusion matrices for all classifiers
-plt.figure(figsize=(15, 12))
+plt.figure(figsize=(9, 9))
 
 plt.subplot(2, 2, 1)
 sns.heatmap(conf_matrix_rf, annot=True, fmt='d', cmap='Blues', 
