@@ -3,7 +3,9 @@ import pandas as pd
 import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
+from nltk import pos_tag
 from nltk.stem import WordNetLemmatizer
+from nltk import chunk
 import string
 import re
 
@@ -15,6 +17,10 @@ import re
 nltk.download('punkt')
 nltk.download('stopwords')
 nltk.download('wordnet')
+nltk.download('averaged_perceptron_tagger')
+nltk.download('maxent_ne_chunker')
+nltk.download('words')
+nltk.download('vader_lexicon')
 
 # Load the data
 def load_data(directory_path):
@@ -30,30 +36,46 @@ def load_data(directory_path):
 
 # Preprocessing steps
 def preprocess_text(text):
-    # Lowercase
+    # Lowercase conversion
     text = text.lower()
     
-    # Remove punctuation
+    # Punctuation removal
     text = text.translate(str.maketrans('', '', string.punctuation))
     
-    # Remove numbers
+    # Removing numbers
     text = re.sub(r'\d+', '', text)
     
     # Tokenization
     tokens = word_tokenize(text)
     
-    # Remove stopwords
+    # Stopwords removal
     stop_words = set(stopwords.words('english'))
-    filtered_tokens = [word for word in tokens if word not in stop_words]
+    tokens = [word for word in tokens if word not in stop_words]
     
-    # Lemmatization
+    # POS Tagging
+    pos_tags = pos_tag(tokens)
+    
+    # Lemmatization with POS Tags
     lemmatizer = WordNetLemmatizer()
-    lemmatized_tokens = [lemmatizer.lemmatize(word) for word in filtered_tokens]
+    lemmatized_tokens = [lemmatizer.lemmatize(word, get_wordnet_pos(tag)) for word, tag in pos_tags]
     
-    # Join the tokens back into a single string
+    # Re-join tokens
     preprocessed_text = ' '.join(lemmatized_tokens)
     
     return preprocessed_text
+
+def get_wordnet_pos(treebank_tag):
+    from nltk.corpus import wordnet
+    if treebank_tag.startswith('J'):
+        return wordnet.ADJ
+    elif treebank_tag.startswith('V'):
+        return wordnet.VERB
+    elif treebank_tag.startswith('N'):
+        return wordnet.NOUN
+    elif treebank_tag.startswith('R'):
+        return wordnet.ADV
+    else:
+        return wordnet.NOUN  # Default to NOUN
 
 # Directory path to the dataset containing text documents
 directory_path = '../sentiment labelled sentences'  
@@ -72,7 +94,31 @@ preprocessed_data = [preprocess_text(text) for text in sentences]
 df = pd.DataFrame({'Text': preprocessed_data, 'Score': scores})
 
 # Display the preprocessed data
-print(df.head())
+print(df.head(20))
+print(df.shape)
+
+
+# foolin' around
+example = df['Text'][40]
+
+print(example)
+
+tokkk = nltk.word_tokenize(example)
+print(tokkk)
+
+taggg = nltk.pos_tag(tokkk) 
+print(taggg)
+
+entities = nltk.chunk.ne_chunk(taggg)
+print (entities)
+
+from nltk.sentiment import SentimentIntensityAnalyzer
+from tqdm.notebook import tqdm
+
+sia = SentimentIntensityAnalyzer()
+
+print(sia.polarity_scores(example))
+# foolin' around
 
 # ------------------------------------------
 # *** Loading the data and preprocessing ***
@@ -82,6 +128,7 @@ print(df.head())
 # --------- Training a classifier ----------
 # ------------------------------------------
 
+"""
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier
@@ -249,3 +296,4 @@ plt.show()
 # ------------------------------------------
 # ********* Training a classifier **********
 # ------------------------------------------
+"""
