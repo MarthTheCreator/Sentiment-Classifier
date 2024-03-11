@@ -1,28 +1,34 @@
+# Import preprocessing libraries
 import os
 import pandas as pd
-import nltk
+import contractions
+import unicodedata
+import re
+
+# Import NLTK libraries
 from nltk.corpus import stopwords
+from nltk.corpus import wordnet
 from nltk.tokenize import word_tokenize
 from nltk import pos_tag
 from nltk.stem import WordNetLemmatizer
+from nltk.stem import PorterStemmer
 from nltk import chunk
-import string
-import re
 
-# ------------------------------------------
-# --- Loading the data and preprocessing ---
-# ------------------------------------------
+# >------------------------------------------<
+# >-- Functions and controls of the script --<
+# >------------------------------------------<
 
-# Download NLTK resources
-nltk.download('punkt')
-nltk.download('stopwords')
-nltk.download('wordnet')
-nltk.download('averaged_perceptron_tagger')
-nltk.download('maxent_ne_chunker')
-nltk.download('words')
-nltk.download('vader_lexicon')
+# Lemmatization and stemming controls
+use_lemmatization = True
+use_stemming = False
 
-# Load the data
+# TF-IDF control
+use_tfidf = True
+
+# N-gram range control
+ngram_range = (1,1)  #(1,1) for unigrams, (1,2) for unigrams and bigrams, or (2,2) for bigrams and so forth. 
+
+# Load the data sets
 def load_data(directory_path):
     all_data = []
     for filename in os.listdir(directory_path):
@@ -34,16 +40,19 @@ def load_data(directory_path):
                     all_data.append((sentence, int(score)))
     return all_data
 
-# Preprocessing steps
+# Function for data cleaning and basic preprocessing. 
 def preprocess_text(text):
     # Lowercase conversion
     text = text.lower()
+
+    # Remove accented characters
+    text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('utf-8', 'ignore')
     
-    # Punctuation removal
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    
-    # Removing numbers
-    text = re.sub(r'\d+', '', text)
+    # Expand contractions
+    text = contractions.fix(text)
+
+    # Special characters, punctuation, and numbers removal
+    text = re.sub(r'[^a-zA-Z\s]', '', text)
     
     # Tokenization
     tokens = word_tokenize(text)
@@ -52,20 +61,26 @@ def preprocess_text(text):
     stop_words = set(stopwords.words('english'))
     tokens = [word for word in tokens if word not in stop_words]
     
-    # POS Tagging
+    # POS Tagging (to be used later in lemmatization if needed)
     pos_tags = pos_tag(tokens)
     
-    # Lemmatization with POS Tags
-    lemmatizer = WordNetLemmatizer()
-    lemmatized_tokens = [lemmatizer.lemmatize(word, get_wordnet_pos(tag)) for word, tag in pos_tags]
-    
-    # Re-join tokens
-    preprocessed_text = ' '.join(lemmatized_tokens)
-    
-    return preprocessed_text
+    # In preprocess_text function, after POS tagging:
+    return tokens, [tag for _, tag in pos_tags]
 
+# Function for lemmatizing the corpus (with pos-tagging)
+def lemmatize_text(tokens, pos_tags):
+    lemmatizer = WordNetLemmatizer()
+    lemmatized_tokens = [lemmatizer.lemmatize(token, get_wordnet_pos(tag)) for token, tag in zip(tokens, pos_tags)]
+    return ' '.join(lemmatized_tokens)
+
+# Function for stemming the corpus
+def stem_text(tokens):
+    stemmer = PorterStemmer()
+    stemmed_tokens = [stemmer.stem(token) for token in tokens]
+    return ' '.join(stemmed_tokens)
+
+# Convert NLTK's POS tags to ones used by the WordNet lemmatizer.
 def get_wordnet_pos(treebank_tag):
-    from nltk.corpus import wordnet
     if treebank_tag.startswith('J'):
         return wordnet.ADJ
     elif treebank_tag.startswith('V'):
@@ -74,226 +89,145 @@ def get_wordnet_pos(treebank_tag):
         return wordnet.NOUN
     elif treebank_tag.startswith('R'):
         return wordnet.ADV
-    else:
-        return wordnet.NOUN  # Default to NOUN
+    else:  # Default case
+        return wordnet.NOUN
 
-# Directory path to the dataset containing text documents
-directory_path = '../sentiment labelled sentences'  
+# >------------------------------------------<
+# >** Functions and controls of the script **<
+# >------------------------------------------<
+
+# >------------------------------------------<
+# >--- Loading the data and preprocessing ---<
+# >------------------------------------------<
 
 # Load all three datasets
+directory_path = '../sentiment labelled sentences'
 all_data = load_data(directory_path)
 
-# Separate sentences and labels
-sentences = [data[0] for data in all_data]
-scores = [data[1] for data in all_data]
+# Apply preprocessing and decide whether to lemmatize, stem or neither
+processed_texts = []
+for text, _ in all_data:
+    tokens, pos_tags = preprocess_text(text)
+    if use_lemmatization:
+        processed_text = lemmatize_text(tokens, pos_tags) # Applying lemmatization with postagging
+    elif use_stemming:
+        processed_text = stem_text(tokens) # Pos-tagging is not needed for applying stemming 
+    else:
+        processed_text = ' '.join(tokens)  # Neither lemmatization nor stemming applied.
+    processed_texts.append(processed_text)
 
-# Apply preprocessing steps
-preprocessed_data = [preprocess_text(text) for text in sentences]
+# Prepare the dataset
+df = pd.DataFrame({'Text': processed_texts, 'Score': [score for _, score in all_data]})
 
-# Create a DataFrame
-df = pd.DataFrame({'Text': preprocessed_data, 'Score': scores})
+# >------------------------------------------<
+# >*** Loading the data and preprocessing ***<
+# >------------------------------------------<
 
-# Display the preprocessed data
-print(df.head(20))
-print(df.shape)
+# >------------------------------------------<
+# >--------- Training a classifier ----------<
+# >------------------------------------------<
 
-
-# foolin' around
-example = df['Text'][40]
-
-print(example)
-
-tokkk = nltk.word_tokenize(example)
-print(tokkk)
-
-taggg = nltk.pos_tag(tokkk) 
-print(taggg)
-
-entities = nltk.chunk.ne_chunk(taggg)
-print (entities)
-
-from nltk.sentiment import SentimentIntensityAnalyzer
-from tqdm.notebook import tqdm
-
-sia = SentimentIntensityAnalyzer()
-
-print(sia.polarity_scores(example))
-# foolin' around
-
-# ------------------------------------------
-# *** Loading the data and preprocessing ***
-# ------------------------------------------
-
-# ------------------------------------------
-# --------- Training a classifier ----------
-# ------------------------------------------
-
-"""
+# Import models and train_test_split
 from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.svm import SVC
+
+# Import vectorization
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+# Import evaluation 
 from sklearn.metrics import classification_report, accuracy_score
+from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import GridSearchCV
 
 # Split the data into training, validation, and testing sets
 X_train, X_temp, y_train, y_temp = train_test_split(df['Text'], df['Score'], test_size=0.4, random_state=42)
 X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42)
 
-# Vectorize the text data using TF-IDF
-vectorizer = TfidfVectorizer()
-X_train_tfidf = vectorizer.fit_transform(X_train)
-X_val_tfidf = vectorizer.transform(X_val)
-X_test_tfidf = vectorizer.transform(X_test)
+# Text vectorization and n_grams depending on the control settings
+if use_tfidf:
+    vectorizer = TfidfVectorizer(ngram_range=ngram_range) 
+else:
+    vectorizer = CountVectorizer(ngram_range=ngram_range)
 
-# Random Forest classifier
-rf_classifier = RandomForestClassifier(n_estimators=100, random_state=42)
-rf_classifier.fit(X_train_tfidf, y_train)
-y_pred_rf = rf_classifier.predict(X_val_tfidf)
+X_train_vectorized = vectorizer.fit_transform(X_train)
+X_val_vectorized = vectorizer.transform(X_val)
+X_test_vectorized = vectorizer.transform(X_test)
 
-# Naive Bayes Classifier
-nb_classifier = MultinomialNB()
-nb_classifier.fit(X_train_tfidf, y_train)
-y_pred_nb = nb_classifier.predict(X_val_tfidf)
-
-# Logistic Regression Classifier
-lr_classifier = LogisticRegression(max_iter=1000)
-lr_classifier.fit(X_train_tfidf, y_train)
-y_pred_lr = lr_classifier.predict(X_val_tfidf)
-
-# Support Vector Machines Classifier
-svm_classifier = SVC(kernel='linear')
-svm_classifier.fit(X_train_tfidf, y_train)
-y_pred_svm = svm_classifier.predict(X_val_tfidf)
-
-# Evaluate the performance of the classifiers on the validation set
-print("Random Forest Classifier:")
-print(classification_report(y_val, y_pred_rf))
-print("Accuracy:", accuracy_score(y_val, y_pred_rf))
-
-print("\nNaive Bayes Classifier:")
-print(classification_report(y_val, y_pred_nb))
-print("Accuracy:", accuracy_score(y_val, y_pred_nb))
-
-print("\nLogistic Regression Classifier:")
-print(classification_report(y_val, y_pred_lr))
-print("Accuracy:", accuracy_score(y_val, y_pred_lr))
-
-print("\nSupport Vector Machines Classifier:")
-print(classification_report(y_val, y_pred_svm))
-print("Accuracy:", accuracy_score(y_val, y_pred_svm))
-
-
-# ------------------------------------------
-# --- Hyperoptimization using gridsearch ---
-# ------------------------------------------
-
-from sklearn.model_selection import GridSearchCV
-
-# Random Forest grid
-rf_params = {
-    'n_estimators': [100, 200, 300],
-    'max_depth': [None, 10, 20],
-    'min_samples_split': [2, 5, 10]
+# Model training and predictions
+models = {
+    "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42),
+    "Naive Bayes": MultinomialNB(),
+    "Logistic Regression": LogisticRegression(max_iter=1000),
+    "Support Vector Machine": SVC(kernel='linear'),
+    "Gradient Boosting Machine": GradientBoostingClassifier(n_estimators=100, random_state=42)
 }
 
-rf_grid_search = GridSearchCV(RandomForestClassifier(random_state=42), rf_params, cv=5, scoring='accuracy')
-rf_grid_search.fit(X_train_tfidf, y_train)
+'''
+# Loop through models, fit, predict, and print evaluation metrics
+for name, model in models.items():
+    model.fit(X_train_vectorized, y_train)
+    y_pred = model.predict(X_val_vectorized)
+    print(f"{name} Classifier:")
+    print(classification_report(y_val, y_pred))
+    print("Accuracy:", accuracy_score(y_val, y_pred))
+    print("\n")
+'''
 
-# Naive Bayes grid
-nb_params = {
-    'alpha': [0.01, 0.1, 1.0, 10.0]
+# >------------------------------------------<
+# >********* Training a classifier **********<
+# >------------------------------------------<
+
+
+# >------------------------------------------<
+# >--------- Hyperparameter tuning ----------<
+# >------------------------------------------<
+
+# Hyperparameter grids
+param_grids = {
+    "Random Forest": {
+        'n_estimators': [10, 50, 100, 200],
+        'max_depth': [None, 10, 20, 30],
+        'min_samples_split': [2, 5, 10]
+    },
+    "Naive Bayes": {
+        'alpha': [0.01, 0.1, 1, 10]
+    },
+    "Logistic Regression": {
+        'C': [0.01, 0.1, 1, 10],
+        'solver': ['liblinear', 'lbfgs']
+    },
+    "Support Vector Machine": {
+        'C': [0.1, 1, 10],
+        'gamma': ['scale', 'auto'],
+        'kernel': ['linear', 'rbf']
+    },
+    "Gradient Boosting Machine": {
+        'n_estimators': [50, 100, 200],
+        'learning_rate': [0.01, 0.1, 0.2],
+        'max_depth': [3, 5, 10]
+    }
 }
 
-nb_grid_search = GridSearchCV(MultinomialNB(), nb_params, cv=5, scoring='accuracy')
-nb_grid_search.fit(X_train_tfidf, y_train)
+best_models = {}
+best_params = {}
+best_scores = {}
+# Looping through the models with GridSearch
+for name, model in models.items():
+    print(f"Starting Grid Search for {name}")
+    grid_search = GridSearchCV(model, param_grids[name], cv=5, scoring='accuracy', n_jobs=-1)
+    grid_search.fit(X_train_vectorized, y_train)  
+    best_models[name] = grid_search.best_estimator_
+    best_params[name] = grid_search.best_params_
+    best_scores[name] = grid_search.best_score_
+    print(f"Best parameters for {name}: {best_params[name]}")
+    print(f"Best cross-validation score for {name}: {best_scores[name]:.3f}")
+    print("\n")
 
-# Logistic regression grid
-lr_params = {
-    'C': [0.01, 0.1, 1, 10, 100],
-    'solver': ['liblinear', 'lbfgs']
-}
-
-lr_grid_search = GridSearchCV(LogisticRegression(max_iter=1000), lr_params, cv=5, scoring='accuracy')
-lr_grid_search.fit(X_train_tfidf, y_train)
-
-# Support Vector Machine Grid
-svm_params = {
-    'C': [0.1, 1, 10],
-    'kernel': ['linear', 'rbf'],
-    'gamma': ['scale', 'auto']
-}
-
-svm_grid_search = GridSearchCV(SVC(), svm_params, cv=5, scoring='accuracy')
-svm_grid_search.fit(X_train_tfidf, y_train)
-
-# Evaluation
-print("Best parameters for RF:", rf_grid_search.best_params_)
-print("Best score for RF:", rf_grid_search.best_score_)
-
-print("Best parameters for NB:", nb_grid_search.best_params_)
-print("Best score for NB:", nb_grid_search.best_score_)
-
-print("Best parameters for LR:", lr_grid_search.best_params_)
-print("Best score for LR:", lr_grid_search.best_score_)
-
-print("Best parameters for SVM:", svm_grid_search.best_params_)
-print("Best score for SVM:", svm_grid_search.best_score_)
-# ------------------------------------------
-# *** Hyperoptimization using gridsearch ***
-# ------------------------------------------
-
-
-from sklearn.metrics import confusion_matrix
-import seaborn as sns
-import matplotlib.pyplot as plt
-
-# Compute confusion matrices for all classifiers on the test set
-conf_matrix_rf = confusion_matrix(y_test, y_pred_rf)
-conf_matrix_nb = confusion_matrix(y_test, y_pred_nb)
-conf_matrix_lr = confusion_matrix(y_test, y_pred_lr)
-conf_matrix_svm = confusion_matrix(y_test, y_pred_svm)
-
-# Plot confusion matrices for all classifiers
-plt.figure(figsize=(9, 9))
-
-plt.subplot(2, 2, 1)
-sns.heatmap(conf_matrix_rf, annot=True, fmt='d', cmap='Blues', 
-            xticklabels=['Negative', 'Positive'], 
-            yticklabels=['Negative', 'Positive'])
-plt.xlabel('Predicted Label')
-plt.ylabel('True Label')
-plt.title('Random Forest Confusion Matrix')
-
-plt.subplot(2, 2, 2)
-sns.heatmap(conf_matrix_nb, annot=True, fmt='d', cmap='Blues', 
-            xticklabels=['Negative', 'Positive'], 
-            yticklabels=['Negative', 'Positive'])
-plt.xlabel('Predicted Label')
-plt.ylabel('True Label')
-plt.title('Naive Bayes Confusion Matrix')
-
-plt.subplot(2, 2, 3)
-sns.heatmap(conf_matrix_lr, annot=True, fmt='d', cmap='Blues', 
-            xticklabels=['Negative', 'Positive'], 
-            yticklabels=['Negative', 'Positive'])
-plt.xlabel('Predicted Label')
-plt.ylabel('True Label')
-plt.title('Logistic Regression Confusion Matrix')
-
-plt.subplot(2, 2, 4)
-sns.heatmap(conf_matrix_svm, annot=True, fmt='d', cmap='Blues', 
-            xticklabels=['Negative', 'Positive'], 
-            yticklabels=['Negative', 'Positive'])
-plt.xlabel('Predicted Label')
-plt.ylabel('True Label')
-plt.title('Support Vector Machines Confusion Matrix')
-
-plt.tight_layout()
-plt.show()
-
-# ------------------------------------------
-# ********* Training a classifier **********
-# ------------------------------------------
-"""
+# >------------------------------------------<
+# >********* Hyperparameter tuning **********<
+# >------------------------------------------<
