@@ -24,6 +24,10 @@ from sklearn.metrics import classification_report, accuracy_score, confusion_mat
 # Import pipeline for experiments
 from sklearn.pipeline import Pipeline
 
+# Import gensim libraries
+from gensim.models import Word2Vec
+from gensim.models.keyedvectors import KeyedVectors
+
 # >------------------------------------------<
 # >-- Functions and controls of the script --<
 # >------------------------------------------<
@@ -93,6 +97,7 @@ def lemma_preprocessor(text):
 def no_preprocessor(text):
     return text
 
+
 # >******************************************<
 # >** Functions and controls of the script **<
 # >******************************************<
@@ -124,10 +129,10 @@ X_train, X_temp, y_train, y_temp = train_test_split(df['Text'], df['Score'], tes
 X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42)
 
 # Vectorizing the data for basic model building. 
-vectorizer = CountVectorizer()
-X_train_vectorized = vectorizer.fit_transform(X_train)
-X_val_vectorized = vectorizer.transform(X_val)
-X_test_vectorized = vectorizer.transform(X_test)
+model_vectorizer = CountVectorizer()
+X_train_vectorized = model_vectorizer.fit_transform(X_train)
+X_val_vectorized = model_vectorizer.transform(X_val)
+X_test_vectorized = model_vectorizer.transform(X_test)
 
 # Model training and predictions
 models = {
@@ -164,6 +169,11 @@ param_grids = {
     "Logistic Regression": {
         'C': [0.01, 0.1, 1, 10],
         'solver': ['liblinear', 'lbfgs']
+    },
+    "Support Vector Machine": {
+        'C': [0.1, 1, 10, 100],
+        'gamma': ['scale', 'auto'],
+        'kernel': ['linear', 'rbf']
     }
 }
 
@@ -171,6 +181,7 @@ param_grids = {
 models = {
     "Naive Bayes": MultinomialNB(),
     "Logistic Regression": LogisticRegression(),
+    "Support Vector Machine": SVC()
 }
 
 best_models = {}
@@ -203,13 +214,13 @@ for name, model in best_models.items():  # Using best_models here
     print("Accuracy:", accuracy_score(y_val, y_pred))
     print("\n")
 
+
 # Best hyperparameter
-mnb = MultinomialNB(alpha=1)
+lg = LogisticRegression(C=1, solver='liblinear')
 
 # >******************************************<
 # >********* Hyperparameter tuning **********<
 # >******************************************<
-
 
 
 # >-----------------------------------------------------------------------<
@@ -231,11 +242,11 @@ for label, preprocessor_func in preprocessing_configs:
     train_features = vectorizer.fit_transform(X_train)
     val_features = vectorizer.transform(X_val)
     
-    # Train and evaluate the Naive Bayes model
-    mnb.fit(train_features, y_train)
-    preprocessing_cv_scores = cross_val_score(mnb, train_features, y_train, cv=5)
+    # Train and evaluate the Logistic Regression model
+    lg.fit(train_features, y_train)
+    preprocessing_cv_scores = cross_val_score(lg, train_features, y_train, cv=5)
     preprocessing_cv_mean_score = np.mean(preprocessing_cv_scores)
-    preprocessing_val_score = mnb.score(val_features, y_val)
+    preprocessing_val_score = lg.score(val_features, y_val)
 
     # Store and print the results
     preprocessing_results.append({
@@ -253,9 +264,11 @@ for label, preprocessor_func in preprocessing_configs:
 for result in preprocessing_results:
     print(f"Preprocessing {result['preprocessing']} - Mean CV accuracy: {result['mean_cv_accuracy']}, Validation accuracy: {result['validation_accuracy']}")
 
+
 # >***********************************************************************<
 # >******* Experiment 1 - Using stemming, lemmatization or neither *******<
 # >***********************************************************************<
+
 
 # >-----------------------------------------------------------------------<
 # >----- Experiment 2 - Using TF.IDF with weights or without weights -----<
@@ -271,36 +284,37 @@ cv_train_features = cv.fit_transform(X_train)  # Fit and transform the training 
 cv_val_features = cv.transform(X_val)  # Only transform the validation data
 print('BOW model: train features shape', cv_train_features.shape, 'validation features shape:', cv_val_features.shape)
 
-# TF Multinomial Naïve Bayes
-mnb.fit(cv_train_features,y_train)
-mnb_bow_cv_scores = cross_val_score(mnb, cv_train_features, y_train, cv=5)
-mnb_bow_cv_mean_score = np.mean(mnb_bow_cv_scores)
-print('CV accuracy (5-fold):', mnb_bow_cv_scores)
-print('Mean CV accuracy (5-fold):', mnb_bow_cv_mean_score)
-mnb_bow_val_score = mnb.score(cv_val_features,y_val)
-print('Accuracy', mnb_bow_val_score)
+# Logistic Regression with BOW
+lg.fit(cv_train_features, y_train)
+lg_bow_cv_scores = cross_val_score(lg, cv_train_features, y_train, cv=5)
+lg_bow_cv_mean_score = np.mean(lg_bow_cv_scores)
+print('CV accuracy (5-fold):', lg_bow_cv_scores)
+print('Mean CV accuracy (5-fold):', lg_bow_cv_mean_score)
+lg_bow_val_score = lg.score(cv_val_features, y_val)
+print('Accuracy', lg_bow_val_score)
 
 # Bag of words model (TF.IDF - term frequency inverse document frequency)
 print('TF.IDF model')
-tv = TfidfVectorizer(use_idf = True, min_df = 0.0, max_df = 1.0)
+tv = TfidfVectorizer(use_idf=True, min_df=0.0, max_df=1.0)
 tv_train_features = tv.fit_transform(X_train)
 
 # Transform validation articles into features
 tv_val_features = tv.transform(X_val)  # Only transform the validation data
 print('TF.IDF model: train features shape', tv_train_features.shape, 'validation features shape:', tv_val_features.shape)
 
-# TF.IDF Multinomial Naïve Bayes
-mnb.fit(tv_train_features,y_train)
-mnb_tfidf_tv_scores = cross_val_score(mnb, tv_train_features, y_train, cv=5)
-mnb_tfidf_tv_mean_score = np.mean(mnb_tfidf_tv_scores)
-print('tV accuracy (5-fold):', mnb_tfidf_tv_scores)
-print('Mean CV accuracy (5-fold):', mnb_tfidf_tv_mean_score)
-mnb_tfidf_val_score = mnb.score(tv_val_features,y_val)
-print('Accuracy', mnb_tfidf_val_score)
+# Logistic Regression with TF.IDF
+lg.fit(tv_train_features, y_train)
+lg_tfidf_tv_scores = cross_val_score(lg, tv_train_features, y_train, cv=5)
+lg_tfidf_tv_mean_score = np.mean(lg_tfidf_tv_scores)
+print('TV accuracy (5-fold):', lg_tfidf_tv_scores)
+print('Mean CV accuracy (5-fold):', lg_tfidf_tv_mean_score)
+lg_tfidf_val_score = lg.score(tv_val_features, y_val)
+print('Accuracy', lg_tfidf_val_score)
 
 # >***********************************************************************<
 # >***** Experiment 2 - Using TF.IDF with weights or without weights *****<
 # >***********************************************************************<
+
 
 # >-----------------------------------------------------------------------<
 # >-------- Experiment 3 - using complete words vs using n_grams ---------<
@@ -309,8 +323,8 @@ print('Accuracy', mnb_tfidf_val_score)
 # Define the parameter grid for n-gram ranges and vectorization strategies
 ngram_ranges = [(1, 1), (1, 2), (1, 3), (2, 2), (2, 3)]
 vectorizers = {
-    'CountVectorizer': CountVectorizer(binary=True, min_df=0.0, max_df=1.0),
-    'TfidfVectorizer': TfidfVectorizer(use_idf=True, min_df=0.0, max_df=1.0)
+    'CountVectorizer': cv,
+    'TfidfVectorizer': tv
 }
 
 # Store results
@@ -324,10 +338,10 @@ for vect_name, vect in vectorizers.items():
         # Update vectorizer n-gram range
         vect.set_params(ngram_range=ngram_range)
         
-        # Create a pipeline with the current vectorizer and MultinomialNB
+        # Create a pipeline with the current vectorizer and Logistic Regression
         pipeline = Pipeline([
             ('vect', vect),
-            ('mnb', mnb)
+            ('lg', lg)
         ])
         
         # Fit the pipeline to the training data
@@ -361,4 +375,49 @@ for result in experiment_results:
 
 # >***********************************************************************<
 # >******** Experiment 3 - using complete words vs using n_grams *********<
+# >***********************************************************************<
+
+# >-----------------------------------------------------------------------<
+# >----- Experiment 4 - BOW representation vs using word embeddings  -----<
+# >-----------------------------------------------------------------------<
+
+# Convert processed_texts from a list of strings to a list of word lists
+tokenized_texts = [text.split() for text in processed_texts]
+
+# For this example, we're training a new model
+word2vec_model = Word2Vec(sentences=tokenized_texts, vector_size=100, window=5, min_count=1, workers=4)
+
+# Save the model for later use
+word2vec_model.save("word2vec_text.model")
+
+def average_word_vectors(words, model, vocabulary, num_features):
+    feature_vector = np.zeros((num_features,), dtype="float64")
+    nwords = 0.
+
+    for word in words:
+        if word in vocabulary: 
+            nwords = nwords + 1.
+            feature_vector = np.add(feature_vector, model.wv[word])
+
+    if nwords:
+        feature_vector = np.divide(feature_vector, nwords)
+    return feature_vector
+
+# We need to split the tokenized_texts according to the original train-validation split
+tokenized_texts_train = [text.split() for text in X_train]
+tokenized_texts_val = [text.split() for text in X_val]
+
+# Generate the average word vectors for the training and validation sets
+X_train_word2vec = np.array([average_word_vectors(text, word2vec_model, set(word2vec_model.wv.index_to_key), 100) for text in tokenized_texts_train])
+X_val_word2vec = np.array([average_word_vectors(text, word2vec_model, set(word2vec_model.wv.index_to_key), 100) for text in tokenized_texts_val])
+
+# Now, fit the model with X_train_word2vec and y_train
+lg.fit(X_train_word2vec, y_train)
+
+# Predict and evaluate the model with X_val_word2vec and y_val
+y_pred_word2vec = lg.predict(X_val_word2vec)
+print("Word2Vec Logistic Regression Accuracy:", accuracy_score(y_val, y_pred_word2vec))
+
+# >***********************************************************************<
+# >***** Experiment 4 - BOW representation vs using word embeddings ******<
 # >***********************************************************************<
