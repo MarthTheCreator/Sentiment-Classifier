@@ -111,6 +111,7 @@ processed_texts = [' '.join(preprocess_text(text)) for text, _ in all_data]
 
 # Prepare the dataset
 df = pd.DataFrame({'Text': processed_texts, 'Score': [score for _, score in all_data]})
+
 # >***********************************************************************<
 
 
@@ -122,7 +123,7 @@ df = pd.DataFrame({'Text': processed_texts, 'Score': [score for _, score in all_
 X_train, X_test, y_train, y_test = train_test_split(df['Text'], df['Score'], test_size=0.2, random_state=42)
 
 # Vectorizing the data for basic model building. 
-model_vectorizer = TfidfVectorizer()
+model_vectorizer = TfidfVectorizer(use_idf=False)
 X_train_vectorized = model_vectorizer.fit_transform(X_train)
 X_test_vectorized = model_vectorizer.transform(X_test)
 
@@ -138,88 +139,38 @@ models = {
 # Loop through models, fit, predict, and print evaluation metrics
 for name, model in models.items():
     model.fit(X_train_vectorized, y_train)
-    y_pred = model.predict(X_test_vectorized)  # Changed from X_val_vectorized to X_test_vectorized
+    y_pred = model.predict(X_test_vectorized)  
     print(f"{name} Classifier:")
-    #print(classification_report(y_test, y_pred))  # Changed from y_val to y_test
-    print("Accuracy:", accuracy_score(y_test, y_pred))  # Changed from y_val to y_test
+    print(classification_report(y_test, y_pred)) 
+    print("Accuracy:", accuracy_score(y_test, y_pred)) 
     print("\n")
 
+# basic hyperparametertuning grid for Logistic Regression
+param_grid_lr = {
+    'C': [0.01, 0.1, 1, 10],
+    'solver': ['liblinear', 'lbfgs']
+}
 
-'''
-# Hyperparameter tuning for Logistic Regression
+# Initialize Logistic Regression
+lr_model = LogisticRegression()
 
-# Hyperparameter grid
-param_grid_lr = {'C': [0.01, 0.1, 1, 10], 'solver': ['liblinear', 'lbfgs']}
+# Initialize GridSearchCV
+grid_search_lr = GridSearchCV(lr_model, param_grid_lr, cv=5, scoring='accuracy', n_jobs=-1)
 
-# Setting up the Logistic Regression model
-log_reg_model = LogisticRegression()
+# Fit GridSearchCV
+grid_search_lr.fit(X_train_vectorized, y_train)
 
-# Setting up GridSearchCV
-grid_search_lr = GridSearchCV(log_reg_model, param_grid_lr, cv=5, scoring='accuracy', n_jobs=-1)
-grid_search_lr.fit(X_train_vectorized, y_train)  
+# Best model, parameters, and score
+best_model_lr = grid_search_lr.best_estimator_
+best_params_lr = grid_search_lr.best_params_
+best_score_lr = grid_search_lr.best_score_
 
-# Storing the best Logistic Regression model, parameters, and score
-best_lr_model = grid_search_lr.best_estimator_
-best_lr_params = grid_search_lr.best_params_
-best_lr_score = grid_search_lr.best_score_
+# Output best parameters and score
+print(f"Best parameters for Logistic Regression: {best_params_lr}")
+print(f"Best cross-validation score for Logistic Regression: {best_score_lr:.3f}")
 
-# Output the best parameters and best cross-validation score
-print("Best parameters for Logistic Regression:", best_lr_params)
-print("Best cross-validation score for Logistic Regression:", best_lr_score)
-
-# Fit the best Logistic Regression model to the training data and predict on the test set
-best_lr_model.fit(X_train_vectorized, y_train)
-y_pred_test_lr = best_lr_model.predict(X_test_vectorized)  # Use the best model to predict the test set
-print("Test Accuracy with Logistic Regression:", accuracy_score(y_test, y_pred_test_lr))
-
-# Best hyperparameter
-#lg = LogisticRegression(C=1, solver='liblinear')
-lg = SVC()
 # >***********************************************************************<
-'''
 
-# Hyperparameter grids
-param_grids = {
-    "Naive Bayes": {'alpha': [0.01, 0.1, 1, 10]},
-    "Logistic Regression": {'C': [0.01, 0.1, 1, 10], 'solver': ['liblinear', 'lbfgs']},
-    "Support Vector Machine": {'C': [0.1, 1, 10, 100], 'gamma': ['scale', 'auto'], 'kernel': ['linear', 'rbf']}
-}
-
-# Model training and predictions
-models = {
-    "Naive Bayes": MultinomialNB(),
-    "Logistic Regression": LogisticRegression(),
-    "Support Vector Machine": SVC()
-}
-
-best_models = {}
-best_params = {}
-best_scores = {}
-
-# Looping through the models with GridSearch
-for name, model in models.items():
-    print(f"\nStarting Grid Search for {name}")
-    print(f"Parameters being tested: {param_grids[name]}")
-    
-    grid_search = GridSearchCV(model, param_grids[name], cv=5, scoring='accuracy', n_jobs=-1)
-    grid_search.fit(X_train_vectorized, y_train)  
-    
-    best_models[name] = grid_search.best_estimator_
-    best_params[name] = grid_search.best_params_
-    best_scores[name] = grid_search.best_score_
-    
-    print(f"Best parameters for {name}: {best_params[name]}")
-    print(f"Best cross-validation score for {name}: {best_scores[name]:.3f}\n")
-
-# Loop through best models, fit, predict, and print evaluation metrics
-for name, model in best_models.items():
-    model.fit(X_train_vectorized, y_train)
-    y_pred_test = model.predict(X_test_vectorized)  # Changed from X_val_vectorized to X_test_vectorized
-    print(f"{name} Classifier with Best Parameters:")
-    print("Test Accuracy:", accuracy_score(y_test, y_pred_test))  # Changed from y_val to y_test
-    print("\n")
-
-lg = SVC(C = 10, gamma = 'scale', kernel = 'rbf')
 
 # >-----------------------------------------------------------------------<
 # >--------------------------- Experiment 1-3 ----------------------------<
@@ -228,8 +179,16 @@ lg = SVC(C = 10, gamma = 'scale', kernel = 'rbf')
 # 3. Using complete words or n_grams 
 # >-----------------------------------------------------------------------<
 
+# Base model with some hyperparameter tuning 
+lr = LogisticRegression(C=10, solver = 'liblinear')
+
 # Define the parameter grid for n-gram ranges and vectorization strategies
+# N_gram range for experiment
 ngram_ranges = [(1, 1), (1, 2), (1, 3), (2, 2), (2, 3)]
+
+# Preprocessing configs: 
+# With stemming, lemmatization or neither
+# With or without tf.idf weights
 preprocessing_configs = [
     ('None', no_preprocessor, 'use_idf=True'),
     ('Stemming', stem_preprocessor, 'use_idf=True'),
@@ -251,8 +210,6 @@ for preproc_label, preprocessor_func, tfidf_param in preprocessing_configs:
         vect = TfidfVectorizer(use_idf=False, min_df=0.0, max_df=1.0, preprocessor=preprocessor_func)
 
     for ngram_range in ngram_ranges:
-        #print(f'Using {preproc_label} preprocessing with TF-IDF {tfidf_param} and n-gram range: {ngram_range}')
-        
         # Update vectorizer n-gram range
         vect.set_params(ngram_range=ngram_range)
         
@@ -261,31 +218,41 @@ for preproc_label, preprocessor_func, tfidf_param in preprocessing_configs:
         X_test_vectorized = vect.transform(X_test)  # Changed from X_val to X_test
         
         # Train and evaluate the Logistic Regression model
-        lg.fit(X_train_vectorized, y_train)
-        cv_scores = cross_val_score(lg, X_train_vectorized, y_train, cv=5)
+        lr.fit(X_train_vectorized, y_train)
+        cv_scores = cross_val_score(lr, X_train_vectorized, y_train, cv=5)
         cv_mean_score = np.mean(cv_scores)
-        test_score = lg.score(X_test_vectorized, y_test)  # Changed from val_score to test_score
+        cv_std_dev = np.std(cv_scores)
+        test_score = lr.score(X_test_vectorized, y_test) 
 
         # Store the performance metrics
         experiment_results.append({
             'Preprocessing': preproc_label,
             'TF-IDF': tfidf_param,
             'N-gram range': ngram_range,
-            'CV accuracy': cv_scores,
+            'CV score (std)': cv_std_dev,
             'Mean CV accuracy': cv_mean_score,
-            'Test accuracy': test_score  
-        })
-
-        # Print the performance metrics
-        #print('CV accuracy (5-fold):', cv_scores)
-        #print('Mean CV accuracy (5-fold):', cv_mean_score)
-        #print('Test accuracy:', test_score)  # Changed from Validation to Test
-        
+        })     
 
 # Print summary of results for all configurations
 for result in experiment_results:
-    print(f"{result['Preprocessing']} preprocessing with TF-IDF {result['TF-IDF']} and n-gram range {result['N-gram range']} - "
-          f"Mean CV accuracy: {result['Mean CV accuracy']}, Test accuracy: {result['Test accuracy']}")
+    print(f"{result['Preprocessing']} {result['TF-IDF']} {result['N-gram range']} - "
+          f"Mean CV accuracy: {result['Mean CV accuracy']}")
+
+# Convert the experiment results to a DataFrame
+results_df = pd.DataFrame(experiment_results)
+
+# Add a column for ranking based on 'Mean CV accuracy'
+results_df['Rank'] = results_df['Mean CV accuracy'].rank(method='max', ascending=False)
+
+# Sort the DataFrame based on the rank
+results_df = results_df.sort_values(by=['Rank'], ascending=True)
+
+# Display the sorted DataFrame
+print(results_df)
+
+# Save the results of the experiments as a csv
+results_df.to_csv('../experiment1-3_results.csv', index=True)
+
 # >***********************************************************************<
 
 
@@ -293,42 +260,47 @@ for result in experiment_results:
 # >----- Experiment 4 - BOW representation vs using word embeddings  -----<
 # >-----------------------------------------------------------------------<
 
-# Convert processed_texts from a list of strings to a list of word lists
-tokenized_texts = [text.split() for text in processed_texts]
+# Creating Word2Vec models: CBOW and Skip-gram
+cbow_model = Word2Vec(sentences=processed_texts, vector_size=100, window=5, min_count=1, sg=0)  # CBOW model
+skipgram_model = Word2Vec(sentences=processed_texts, vector_size=100, window=5, min_count=1, sg=1)  # Skip-gram model
 
-# For this example, we're training a new model
-word2vec_model = Word2Vec(sentences=tokenized_texts, vector_size=100, window=5, min_count=1, workers=4)
-
-# Save the model for later use
-word2vec_model.save("word2vec_text.model")
-
-def average_word_vectors(words, model, vocabulary, num_features):
+def average_word_vectors(words, model, num_features):
     feature_vector = np.zeros((num_features,), dtype="float64")
-    nwords = 0.
-
+    nwords = 0
     for word in words:
-        if word in vocabulary: 
-            nwords = nwords + 1.
+        if word in model.wv.index_to_key:
+            nwords += 1
             feature_vector = np.add(feature_vector, model.wv[word])
-
     if nwords:
         feature_vector = np.divide(feature_vector, nwords)
     return feature_vector
 
-# We need to split the tokenized_texts according to the original train-test split
-tokenized_texts_train = [text.split() for text in X_train]
-tokenized_texts_test = [text.split() for text in X_test]  # Change from val to test
+# Generate the average word vectors for the training sets for both models
+X_train_cbow_vec = np.array([average_word_vectors(text, cbow_model, 100) for text in X_train])
+X_train_skipgram_vec = np.array([average_word_vectors(text, skipgram_model, 100) for text in X_train])
 
-# Generate the average word vectors for the training and test sets
-X_train_word2vec = np.array([average_word_vectors(text, word2vec_model, set(word2vec_model.wv.index_to_key), 100) for text in tokenized_texts_train])
-X_test_word2vec = np.array([average_word_vectors(text, word2vec_model, set(word2vec_model.wv.index_to_key), 100) for text in tokenized_texts_test])  # Change from val to test
+# Using Support Vector Machine with the best parameters found from hyperparameter tuning
+lr_best = LogisticRegression(C=10, solver = 'liblinear')
 
-# Now, fit the model with X_train_word2vec and y_train
-lg.fit(X_train_word2vec, y_train)
+# Evaluating CBOW model with 5-fold cross-validation
+cv_scores_cbow = cross_val_score(lr_best, X_train_cbow_vec, y_train, cv=5, scoring='accuracy')
+print("CBOW model - LR 5-fold CV Accuracies:", cv_scores_cbow)
+print("CBOW model - LR Mean 5-fold CV Accuracy:", np.mean(cv_scores_cbow))
 
-# Predict and evaluate the model with X_test_word2vec and y_test  # Change from val to test
-y_pred_word2vec = lg.predict(X_test_word2vec)  # Change from val to test
-print("Word2Vec Logistic Regression Accuracy:", accuracy_score(y_test, y_pred_word2vec))  # Change from val to test
+# Evaluating Skip-gram model with 5-fold cross-validation
+cv_scores_skipgram = cross_val_score(lr_best, X_train_skipgram_vec, y_train, cv=5, scoring='accuracy')
+print("Skip-gram model - LR 5-fold CV Accuracies:", cv_scores_skipgram)
+print("Skip-gram model - LR Mean 5-fold CV Accuracy:", np.mean(cv_scores_skipgram))
+
+# Test the models on the test set after cross-validation
+lr_best.fit(X_train_cbow_vec, y_train)
+y_pred_cbow = lr_best.predict(np.array([average_word_vectors(text, cbow_model, 100) for text in X_test]))
+print("CBOW model - lr Test Accuracy:", accuracy_score(y_test, y_pred_cbow))
+
+lr_best.fit(X_train_skipgram_vec, y_train)
+y_pred_skipgram = lr_best.predict(np.array([average_word_vectors(text, skipgram_model, 100) for text in X_test]))
+print("Skip-gram model - lr Test Accuracy:", accuracy_score(y_test, y_pred_skipgram))
+
 # >***********************************************************************<
 
 
@@ -374,33 +346,83 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 # Comparison loop
 results = []
 for name, preprocessor_func in preprocessing_techniques.items():
-    vectorizer = TfidfVectorizer()  # Reinitialize to avoid carryover
-    #lg = LogisticRegression()
-    lg = SVC()
+    vectorizer = TfidfVectorizer(use_idf=True, min_df=0.0, max_df=1.0, ngram_range = (1,3))  # Reinitialize to avoid carryover
+    lr = LogisticRegression(C=10, solver = 'liblinear') # Reinitialize to avoid carryover
 
-    pipeline = Pipeline([
-        ('vectorizer', vectorizer),
-        ('classifier', lg)
-    ])
-    
-    # Apply preprocessing if the technique requires it
     if preprocessor_func:
-        X_train_processed = [preprocessor_func(text) for text in X_train]
-        X_test_processed = [preprocessor_func(text) for text in X_test]
+        X_processed = [preprocessor_func(text) for text in X_train]
     else:
-        X_train_processed, X_test_processed = X_train, X_test
+        X_processed = X_train
 
-    # Fit and evaluate
-    pipeline.fit(X_train_processed, y_train)
-    y_pred = pipeline.predict(X_test_processed)
-    accuracy = accuracy_score(y_test, y_pred)
+    # Vectorizing the processed text
+    X_vectorized = vectorizer.fit_transform(X_processed)
+    
+    # Performing cross-validation and calculating mean CV score
+    cv_scores = cross_val_score(lr, X_vectorized, y_train, cv=5)
+    mean_cv_score = np.mean(cv_scores)
 
     # Collecting results
     results.append({
         'Technique': name,
-        'Accuracy': accuracy
+        'Mean CV Score': mean_cv_score
     })
 
 for result in results:
-    print(f"{result['Technique']} - Accuracy: {result['Accuracy']}")
+    print(f"{result['Technique']} - Mean CV Score: {result['Mean CV Score']:.3f}")
+# >***********************************************************************<
+
+
+# >-----------------------------------------------------------------------<
+# >-------------- Testing the final models on the test data --------------<
+# >-----------------------------------------------------------------------<
+
+# Evaluating final model
+X = df['Text']
+y = df['Score']
+
+# Final model evaluation without YAKE Keyphrase Extraction
+
+# Split the data into training and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Create a TfidfVectorizer with the specified parameters
+vectorizer_final = TfidfVectorizer(use_idf=True, ngram_range=(1, 3))
+
+# Create a Logistic Regression model with the specified parameters
+lr_model_final = LogisticRegression(C=10, solver='liblinear')
+
+# Create a pipeline that first vectorizes the text and then applies the Logistic Regression model
+pipeline_final = Pipeline([
+    ('tfidf', vectorizer_final),
+    ('logreg', lr_model_final)
+])
+
+# Fit the pipeline to the training data
+pipeline_final.fit(X_train, y_train)
+
+# Predict the labels for the test set
+y_pred_final = pipeline_final.predict(X_test)
+
+# Calculate the accuracy of the predictions
+accuracy_final = accuracy_score(y_test, y_pred_final)
+
+print(f"Final Model Test Accuracy: {accuracy_final:.3f}")
+
+# Evaluating the model with YAKE Keyphrase Extraction
+
+# Preprocess the test data with YAKE keyphrase extraction
+X_test_yake = [extract_keyphrases_yake(text) for text in X_test]
+
+# Fit the pipeline to the training data preprocessed with YAKE keyphrase extraction
+X_train_yake = [extract_keyphrases_yake(text) for text in X_train]
+pipeline_final.fit(X_train_yake, y_train)
+
+# Predict the labels for the preprocessed test set
+y_pred_yake = pipeline_final.predict(X_test_yake)
+
+# Calculate the accuracy of the predictions
+accuracy_yake = accuracy_score(y_test, y_pred_yake)
+
+print(f"YAKE Keyphrase Extraction Model Test Accuracy: {accuracy_yake:.3f}")
+
 # >***********************************************************************<
